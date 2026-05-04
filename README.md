@@ -25,7 +25,7 @@ The script follows a layered strategy:
    - Drop last word (to avoid partial/corrupt suffixes)
 5. Rename to:
 
-Title - Author.ext
+`Title - Author.ext`
 
 ---
 
@@ -33,7 +33,7 @@ Title - Author.ext
 
 ### 1. Save Script
 
-chmod +x rename.sh
+`chmod +x rnt`
 
 ---
 
@@ -41,34 +41,36 @@ chmod +x rename.sh
 
 #### 🟢 Ubuntu / Debian
 
-sudo apt update && sudo apt install -y libimage-exiftool-perl poppler-utils file
+`sudo apt update && sudo apt install -y libimage-exiftool-perl poppler-utils file`
 
 ---
 
 #### 🔴 Red Hat / Fedora / CentOS
 
-sudo dnf install -y perl-Image-ExifTool poppler-utils file
+`sudo dnf install -y perl-Image-ExifTool poppler-utils file`
 
 ---
 
 #### ⚪ Arch Linux
 
-sudo pacman -S exiftool poppler file
+`sudo pacman -S exiftool poppler file`
 
 ---
 
 ## 🧪 Usage
 
-./rename.sh <file>
+```
+./rnt <file>
 
 Example:
 
-./rename.sh "Deep Learning (Draft v2).pdf"
-
+./rnt "Deep Learning (Draft v2).pdf"
+```
 ---
 
 ## 📌 Example Transformation
 
+```
 Input:
 
 Deep Learning (Ian Goodfellow) draft v2.pdf
@@ -81,7 +83,7 @@ Fallback case (no metadata):
 
 Some Random File (v3 final).epub
 → Some Random File - Unknown.epub
-
+```
 ---
 
 ## ⚠️ Warning (Read This Before You Batch Anything)
@@ -112,14 +114,15 @@ Things that can go wrong:
 
 Before trusting it blindly:
 
-echo "./rename.sh \"file.pdf\""
+echo "./rnt \"file.pdf\""
 
 Or manually test on a few files first.
 
 If you want to batch:
 
-find . -type f -print0 | xargs -0 -I{} ./rename.sh "{}"
-
+```
+find . -type f -print0 | xargs -0 -I{} ./rnt "{}"
+```
 But honestly — don’t batch until you trust your rules.
 
 ---
