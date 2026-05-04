@@ -54,6 +54,34 @@ remove_last_word() {
     echo "$1" | awk '{ if (NF > 1) { NF--; print } }'
 }
 
+deep_inspection_epub() {
+    local file="$1"
+    local tmpdir
+    tmpdir="$(mktemp -d)"
+
+    trap 'rm -rf "$tmpdir"' RETURN
+
+    unzip -qq "$file" -d "$tmpdir" || return
+
+    local opf_path
+    opf_path=$(grep -oP 'full-path="\K[^"]+' "$tmpdir/META-INF/container.xml" 2>/dev/null || true)
+
+    if [[ -z "$opf_path" ]]; then
+        opf_path=$(find "$tmpdir" -name '*.opf' | head -n 1 || true)
+    else
+        opf_path="$tmpdir/$opf_path"
+    fi
+
+    [[ -z "$opf_path" || ! -f "$opf_path" ]] && return
+
+    local t a
+    t=$(grep -oP '<dc:title[^>]*>\K[^<]+' "$opf_path" | head -n 1 || true)
+    a=$(grep -oP '<dc:creator[^>]*>\K[^<]+' "$opf_path" | head -n 1 || true)
+
+    [[ -n "$t" ]] && title="$t"
+    [[ -n "$a" ]] && author="$a"
+}
+
 clean_text() {
     echo "$1" \
     | sed -E 's/\(.*?\)//g; s/\[.*?\]//g' \
@@ -70,12 +98,14 @@ if [[ $# -lt 1 ]]; then
     exit 1
 fi
 
+file="$1"
+
 if [[ ! -f "$file" ]]; then
     echo -e "${red}Error${reset}: File does not exist → $file"
     exit 1
 fi
 
-for cmd in exiftool file pdfinfo; do
+for cmd in exiftool file pdfinfo unzip; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
         echo "${red}Error${reset}: '$cmd' is not installed"
         exit 1
@@ -84,11 +114,10 @@ done
 
 mime=$(file --mime-type -b "$file")
 
-file="$1"
-
 title=$(exiftool -s3 -Title "$file" 2>/dev/null || true)
 author=$(exiftool -s3 -Author "$file" 2>/dev/null || true)
 
+# EPUB often uses different tags
 [[ -z "$title" ]] && title=$(exiftool -s3 -BookName "$file" 2>/dev/null || true)
 [[ -z "$author" ]] && author=$(exiftool -s3 -Creator "$file" 2>/dev/null || true)
 
@@ -100,10 +129,15 @@ if [[ "$mime" == "application/pdf" ]]; then
     [[ -n "$p_author" ]] && author="$p_author"
 fi
 
+if [[ "$mime" == "application/epub+zip" ]]; then
+    if [[ -z "$title" || -z "$author" ]]; then
+        deep_inspection_epub "$file"
+    fi
+fi
+
 title=$(clean_text "$title")
 author=$(clean_text "$author")
 
-# Fallback Heuristics
 if [[ -z "$title" || -z "$author" ]]; then
     base="$(basename "$file")"
     base="${base%.*}"
