@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# MIT License
+# 
+# Copyright (c) 2026 Kei Tachikawa
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+set -euo pipefail
+red="\e[0;91m"
+blue="\e[0;94m"
+expand_bg="\e[K"
+blue_bg="\e[0;104m${expand_bg}"
+red_bg="\e[0;101m${expand_bg}"
+green_bg="\e[0;102m${expand_bg}"
+green="\e[0;92m"
+white="\e[0;97m"
+bold="\e[1m"
+uline="\e[4m"
+reset="\e[0m"
+
+show_help() {
+    cat <<EOF
+Usage: $(basename "$0") <file>
+
+Rename a file using metadata (Title + Author).
+
+Supports:
+  PDF, EPUB, CBZ, CBR, images, etc.
+
+Basically attempts to use the metadata information, available in the pdfinfo, exiftool or else performs a basic cleanup.
+Options:
+  -h, --help    Show help
+EOF
+}
+
+remove_last_word() {
+    # Just a safe workaround to remove the last word which is broken in case
+    # nothing is found in metadata
+    echo "$1" | awk '{ if (NF > 1) { NF--; print } }'
+}
+
+clean_text() {
+    echo "$1" \
+    | sed -E 's/\(.*?\)//g; s/\[.*?\]//g' \
+    | xargs
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    show_help
+    exit 0
+fi
+
+if [[ $# -lt 1 ]]; then
+    echo -e "${red}Error${reset}: No file provided"
+    exit 1
+fi
+
+if [[ ! -f "$file" ]]; then
+    echo -e "${red}Error${reset}: File does not exist → $file"
+    exit 1
+fi
+
+for cmd in exiftool file pdfinfo; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "${red}Error${reset}: '$cmd' is not installed"
+        exit 1
+    fi
+done
+
+mime=$(file --mime-type -b "$file")
+
+file="$1"
+
+title=$(exiftool -s3 -Title "$file" 2>/dev/null || true)
+author=$(exiftool -s3 -Author "$file" 2>/dev/null || true)
+
+[[ -z "$title" ]] && title=$(exiftool -s3 -BookName "$file" 2>/dev/null || true)
+[[ -z "$author" ]] && author=$(exiftool -s3 -Creator "$file" 2>/dev/null || true)
+
+if [[ "$mime" == "application/pdf" ]]; then
+    p_title=$(pdfinfo "$file" 2>/dev/null | awk -F': ' '/^Title/ {print $2}')
+    p_author=$(pdfinfo "$file" 2>/dev/null | awk -F': ' '/^Author/ {print $2}')
+
+    [[ -n "$p_title" && "$p_title" != "untitled" ]] && title="$p_title"
+    [[ -n "$p_author" ]] && author="$p_author"
+fi
+
+title=$(clean_text "$title")
+author=$(clean_text "$author")
+
+# Fallback Heuristics
+if [[ -z "$title" || -z "$author" ]]; then
+    base="$(basename "$file")"
+    base="${base%.*}"
+    base=$(echo "$base" | sed -E 's/\(.*?\)//g; s/\[.*?\]//g')
+    base=$(remove_last_word "$base")
+    base=$(echo "$base" | xargs)
+    [[ -z "$title" ]] && title="$base"
+    [[ -z "$author" ]] && author="Unknown"
+fi
+
+ext="${file##*.}"
+
+new_name="${title} - ${author}.${ext}"
+new_name=$(echo "$new_name" | tr '/' '-' | tr -d '\n')
+
+dir="$(dirname "$file")"
+target="$dir/$new_name"
+
+if [[ -z "$title" ]]; then
+    echo "${red}Error${reset}: Title empty after processing"
+    exit 1
+fi
+
+if [[ -e "$target" ]]; then
+    echo "${red}Error${reset}: Target exists → $target"
+    exit 1
+fi
+
+echo "Renaming:"
+echo "  From: $file"
+echo "  To:   $target"
+
+mv "$file" "$target"
